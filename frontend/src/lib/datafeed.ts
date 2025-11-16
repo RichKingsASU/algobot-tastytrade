@@ -87,12 +87,32 @@ const datafeed = {
     onResetCacheNeeded: () => void
   ) => {
     console.log("[subscribeBars]:", symbolInfo.ticker, resolution, subscriberUID);
-    // TODO: wire your real-time websocket service here.
+    const ws = new WebSocket('ws://localhost:8080');
+
+    ws.onopen = () => {
+      console.log('WebSocket connected');
+      ws.send(JSON.stringify({ type: 'subscribe', symbol: symbolInfo.ticker, resolution }));
+    };
+
+    ws.onmessage = (event) => {
+      const message = JSON.parse(event.data);
+      // Assuming the server sends bar data in the format: { time, open, high, low, close, volume }
+      onRealtimeCallback(message);
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+
+    (window as any).ws = ws;
   },
 
   unsubscribeBars: (subscriberUID: string) => {
     console.log("[unsubscribeBars]:", subscriberUID);
-    // TODO: clean up subscription
+    const ws = (window as any).ws;
+    if (ws) {
+      ws.close();
+    }
   },
 };
 
