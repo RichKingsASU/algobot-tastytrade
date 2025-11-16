@@ -1,4 +1,4 @@
-aiohttp
+httpx
 websockets
 supabase
 python-dotenv
