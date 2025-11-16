@@ -1,98 +1,99 @@
-import {
-  IExternalDatafeed,
-  LibrarySymbolInfo,
-} from "charting_library";  // adjust path if necessary
+// frontend/src/lib/datafeed.ts
 
-export class CustomDatafeed implements IExternalDatafeed {
-  onReady(callback: (config: any) => void): void {
-    const config = {
-      supports_search: true,
-      supports_group_request: false,
-      supports_marks: false,
-      supports_time: true,
-      supported_resolutions: ["1", "5", "15", "60", "D"],
-    };
-    setTimeout(() => callback(config), 0);
-  }
+import { widget as TradingViewWidget, ResolutionString } from "some-type-defs";  
+// adjust import path as per your setup
 
-  resolveSymbol(
+interface Bar { time: number; open: number; high: number; low: number; close: number; volume: number; }
+
+const configuration = {
+  supports_search: true,
+  supports_group_request: false,
+  supported_resolutions: ["1", "5", "15", "60", "1D", "1W"],
+  supports_marks: false,
+  supports_timescale_marks: false,
+  supports_time: true,
+};
+
+const datafeed = {
+  onReady: (callback: (cfg: typeof configuration) => void) => {
+    console.log("[onReady]");  
+    setTimeout(() => callback(configuration), 0);
+  },
+
+  searchSymbols: async (
+    userInput: string,
+    exchange: string,
+    symbolType: string,
+    onResultReady: (results: any[]) => void
+  ) => {
+    console.log("[searchSymbols]:", userInput);
+    // Implement search logic or return hard-coded list
+    onResultReady([]);
+  },
+
+  resolveSymbol: async (
     symbolName: string,
-    onSymbolResolvedCallback: (symbolInfo: LibrarySymbolInfo) => void,
-    onResolveErrorCallback: (error: string) => void
-  ): void {
-    fetch(`/functions/v1/datafeed/symbol_info?symbol=${encodeURIComponent(symbolName)}`)
-      .then(r => r.json())
-      .then(resp => {
-        if (resp.s === "ok") {
-          onSymbolResolvedCallback(resp.symbolInfo);
-        } else {
-          onResolveErrorCallback("symbol not found");
-        }
-      })
-      .catch(err => onResolveErrorCallback(err.message));
-  }
+    onSymbolResolved: (symbolInfo: any) => void,
+    onResolveError: (error: string) => void
+  ) => {
+    console.log("[resolveSymbol]:", symbolName);
+    try {
+      const res = await fetch(`/functions/v1/datafeed-symbolinfo?symbol=${encodeURIComponent(symbolName)}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const info = await res.json();
+      onSymbolResolved(info);
+    } catch (err) {
+      console.error(err);
+      onResolveError((err as Error).message);
+    }
+  },
 
-  getBars(
-    symbolInfo: LibrarySymbolInfo,
-    resolution: string,
-    from: number,
-    to: number,
-    onHistoryCallback: (bars: any[], meta: any) => void,
-    onErrorCallback: (error: string) => void,
-    firstDataRequest: boolean
-  ): void {
-    fetch(`/functions/v1/datafeed/history?symbol=${encodeURIComponent(symbolInfo.ticker)}&resolution=${resolution}&from=${from}&to=${to}`)
-      .then(r => r.json())
-      .then(resp => {
-        if (resp.s === "ok") {
-          onHistoryCallback(resp.bars, { noData: resp.bars.length === 0 });
-        } else {
-          onErrorCallback("no data");
-        }
-      })
-      .catch(err => onErrorCallback(err.message));
-  }
+  getBars: async (
+    symbolInfo: any,
+    resolution: ResolutionString,
+    periodParams: { from: number; to: number; countBack: number; firstDataRequest: boolean; },
+    onHistoryCallback: (bars: Bar[], meta?: { noData?: boolean }) => void,
+    onErrorCallback: (error: string) => void
+  ) => {
+    console.log("[getBars]:", symbolInfo.ticker, resolution, periodParams);
+    try {
+      const query = `symbol=${encodeURIComponent(symbolInfo.ticker)}&resolution=${encodeURIComponent(resolution)}&from=${periodParams.from}&to=${periodParams.to}`;
+      const res = await fetch(`/functions/v1/datafeed-history?${query}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = await res.json();
+      if (body.s !== "ok" || !Array.isArray(body.bars)) {
+        throw new Error("Unexpected response");
+      }
+      const bars: Bar[] = body.bars.map((r: any) => ({
+        time: r.time * 1000,   // convert seconds → ms if needed
+        open: r.open,
+        high: r.high,
+        low: r.low,
+        close: r.close,
+        volume: r.volume,
+      }));
+      onHistoryCallback(bars);
+    } catch (err) {
+      console.error(err);
+      onErrorCallback((err as Error).message);
+    }
+  },
 
-  subscribeBars(
-    symbolInfo: LibrarySymbolInfo,
-    resolution: string,
-    onRealtimeCallback: (bar: any) => void,
+  subscribeBars: (
+    symbolInfo: any,
+    resolution: ResolutionString,
+    onRealtimeCallback: (bar: Bar) => void,
     subscriberUID: string,
-    onResetCacheNeededCallback: () => void
-  ): void {
-    // TODO: wire real-time subscription via Supabase Realtime or WebSocket
-    // Example: subscribe to `/realtime_quotes` table for updates
-    const channel = (window as any).supabase
-      .channel(`quotes-${symbolInfo.ticker}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "realtime_quotes",
-          filter: `symbol=eq.${symbolInfo.ticker}`
-        },
-        (payload: any) => {
-          const row = payload.new;
-          onRealtimeCallback({
-            time: Math.floor(new Date(row.ts).getTime() / 1000),
-            open: row.last_price,
-            high: row.last_price,
-            low: row.last_price,
-            close: row.last_price,
-            volume: row.volume,
-          });
-        }
-      )
-      .subscribe();
-    (this as any)._channel = channel;
-  }
+    onResetCacheNeeded: () => void
+  ) => {
+    console.log("[subscribeBars]:", symbolInfo.ticker, resolution, subscriberUID);
+    // TODO: wire your real-time websocket service here.
+  },
 
-  unsubscribeBars(subscriberUID: string): void {
-    (window as any).supabase.removeChannel((this as any)._channel);
-  }
+  unsubscribeBars: (subscriberUID: string) => {
+    console.log("[unsubscribeBars]:", subscriberUID);
+    // TODO: clean up subscription
+  },
+};
 
-  getServerTime(callback: (timestamp: number) => void): void {
-    callback(Math.floor(Date.now() / 1000));
-  }
-}
+export default datafeed;
