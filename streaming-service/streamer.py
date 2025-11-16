@@ -6,8 +6,12 @@ import datetime as dt
 
 import aiohttp
 import websockets
+from dotenv import load_dotenv
 from supabase import create_client, Client
 
+load_dotenv()  # Load variables from .env
+
+# Environment variables
 TT_BASE_URL = os.getenv("TT_BASE_URL", "https://api.tastytrade.com")
 TT_AUTH_TOKEN = os.getenv("TT_AUTH_TOKEN")
 
