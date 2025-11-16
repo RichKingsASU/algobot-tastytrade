@@ -10,3 +10,4 @@ __pycache__/
 
 # Streaming service
 streaming-service/.env
+streaming-service/streamer.log
