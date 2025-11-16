@@ -3,3 +3,10 @@ node_modules/
 dist/
 build/
 deno.lock
+
+# Python
+__pycache__/
+*.pyc
+
+# Streaming service
+streaming-service/.env
