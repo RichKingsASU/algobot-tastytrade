@@ -16,7 +16,7 @@ serve(async (_req: Request) => {
     if (!BASE || !USER || !PASS) {
       return new Response(
         JSON.stringify({
-          error: "Missing TASTYTRADE_* env vars for login_session.",
+          error: "Missing Tastytrade env vars",
         }),
         { status: 500, headers: { "Content-Type": "application/json" } },
       );

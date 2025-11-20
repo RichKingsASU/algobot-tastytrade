@@ -79,41 +79,70 @@ const datafeed = {
     }
   },
 
+const wsUrl = 'ws://localhost:8080';  // adjust if deployed elsewhere
+const subscribers: Record<string, WebSocket> = {};
+
+const datafeed = {
+  // … existing onReady, resolveSymbol, getBars methods …
+
   subscribeBars: (
     symbolInfo: any,
-    resolution: ResolutionString,
-    onRealtimeCallback: (bar: Bar) => void,
+    resolution: string,
+    onRealtimeCallback: (bar: any) => void,
     subscriberUID: string,
-    onResetCacheNeeded: () => void
+    onResetCacheNeededCallback: () => void
   ) => {
-    console.log("[subscribeBars]:", symbolInfo.ticker, resolution, subscriberUID);
-    const ws = new WebSocket('ws://localhost:8080');
+    console.log('[subscribeBars]:', subscriberUID, symbolInfo, resolution);
 
+    // Create WebSocket connection or reuse
+    const ws = new WebSocket(wsUrl);
     ws.onopen = () => {
-      console.log('WebSocket connected');
-      ws.send(JSON.stringify({ type: 'subscribe', symbol: symbolInfo.ticker, resolution }));
+      ws.send(
+        JSON.stringify({
+          action: 'subscribe',
+          uid: subscriberUID,
+          symbol: symbolInfo.ticker,
+          resolution
+        })
+      );
     };
 
-    ws.onmessage = (event) => {
-      const message = JSON.parse(event.data);
-      // Assuming the server sends bar data in the format: { time, open, high, low, close, volume }
-      onRealtimeCallback(message);
+    ws.onmessage = (ev) => {
+      try {
+        const msg = JSON.parse(ev.data);
+        // Ensure msg has new bar data matching symbol/resolution
+        const bar = {
+          time: msg.time,      // ensure this is ms since epoch
+          open: msg.open,
+          high: msg.high,
+          low: msg.low,
+          close: msg.close,
+          volume: msg.volume
+        };
+        onRealtimeCallback(bar);
+      } catch (err) {
+        console.error('[subscribeBars] message parse error', err);
+      }
     };
 
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
+    ws.onerror = (err) => console.error('[subscribeBars] ws error', err);
 
-    (window as any).ws = ws;
+    // Store for unsubscribe
+    subscribers[subscriberUID] = ws;
   },
 
   unsubscribeBars: (subscriberUID: string) => {
-    console.log("[unsubscribeBars]:", subscriberUID);
-    const ws = (window as any).ws;
+    console.log('[unsubscribeBars]:', subscriberUID);
+    const ws = subscribers[subscriberUID];
     if (ws) {
+      ws.send(
+        JSON.stringify({ action: 'unsubscribe', uid: subscriberUID })
+      );
       ws.close();
+      delete subscribers[subscriberUID];
     }
   },
+};
 };
 
 export default datafeed;
