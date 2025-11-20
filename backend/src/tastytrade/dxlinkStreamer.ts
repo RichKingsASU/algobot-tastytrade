@@ -1,5 +1,6 @@
 import WebSocket from 'ws';
 import { getOrRefreshApiQuoteToken } from './apiQuoteToken';
+import { supabase } from '../db/supabaseClient';
 
 enum StreamerState {
     DISCONNECTED,
@@ -17,8 +18,16 @@ export class TastyStreamer {
     private state: StreamerState = StreamerState.DISCONNECTED;
     private keepaliveTimer: NodeJS.Timeout | null = null;
     private dxToken: string | null = null;
+    private resolveDone?: () => void;
+    private donePromise: Promise<void>;
 
-    public async connect() {
+    constructor() {
+        this.donePromise = new Promise<void>((resolve) => {
+            this.resolveDone = resolve;
+        });
+    }
+
+    public async start(): Promise<void> {
         if (this.state !== StreamerState.DISCONNECTED) {
             console.log('Streamer is already connected or connecting.');
             return;
@@ -36,6 +45,8 @@ export class TastyStreamer {
         this.ws.onmessage = (event) => this.onMessage(event);
         this.ws.onerror = (error) => this.onError(error);
         this.ws.onclose = () => this.onClose();
+
+        await this.donePromise;
     }
 
     private onOpen() {
@@ -75,13 +86,13 @@ export class TastyStreamer {
                 break;
             case StreamerState.FEED_CONFIGURED:
                 if (message.type === 'FEED_DATA') {
-                    this.handleFeedData(message.data);
+                    this.handleFeedData(message).catch(err => console.error('handleFeedData error:', err));
                     this.state = StreamerState.STREAMING;
                 }
                 break;
             case StreamerState.STREAMING:
                 if (message.type === 'FEED_DATA') {
-                    this.handleFeedData(message.data);
+                    this.handleFeedData(message).catch(err => console.error('handleFeedData error:', err));
                 }
                 break;
         }
@@ -97,6 +108,7 @@ export class TastyStreamer {
         console.log('DXLink websocket closed.');
         this.state = StreamerState.DISCONNECTED;
         this.stopKeepalive();
+        this.resolveDone?.();
     }
 
     private send(message: any) {
@@ -143,7 +155,7 @@ export class TastyStreamer {
             acceptAggregationPeriod: 1,
             acceptDataFormat: 'COMPACT',
             acceptEventFields: {
-                Quote: ['eventSymbol', 'bidPrice', 'askPrice'],
+                Quote: ['eventSymbol', 'bidPrice', 'askPrice', 'bidSize', 'askSize', 'time'],
             },
         });
     }
@@ -158,11 +170,44 @@ export class TastyStreamer {
         });
     }
 
-    private handleFeedData(data: any[]) {
-        const [eventType, eventData] = data;
-        if (eventType === 'Quote') {
-            const [eventSymbol, bidPrice, askPrice] = eventData;
-            console.log(`[DXLINK] Quote: ${eventSymbol} bid=${bidPrice}, ask=${askPrice}`);
+    private async handleFeedData(msg: any) {
+        const rows: any[] = [];
+        const [eventType, payload] = msg.data;
+
+        if (eventType !== 'Quote') return;
+
+        const fieldsPerQuote = 6; // As defined in acceptEventFields
+        for (let i = 0; i < payload.length; i += fieldsPerQuote) {
+            const quoteData = payload.slice(i, i + fieldsPerQuote);
+            const [
+                symbol,
+                bidPrice,
+                askPrice,
+                bidSize,
+                askSize,
+                ts
+            ] = quoteData;
+
+            rows.push({
+                event_type: eventType,
+                symbol,
+                bid_price: bidPrice,
+                ask_price: askPrice,
+                bid_size: bidSize,
+                ask_size: askSize,
+                received_at: new Date(ts),
+                raw_payload: msg
+            });
+        }
+
+        if (rows.length === 0) return;
+
+        const { error } = await supabase
+            .from('tastytrade_quotes')
+            .insert(rows);
+
+        if (error) {
+            console.error('Error inserting quotes into tastytrade_quotes:', error);
         }
     }
 
@@ -183,5 +228,36 @@ export class TastyStreamer {
         if (this.ws) {
             this.ws.close();
         }
+    }
+}
+
+export async function runForever() {
+    const maxBackoffMs = 60_000; // 60 seconds cap
+    let backoffMs = 1_000;       // start at 1 second
+
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+        const startTs = Date.now();
+        try {
+            console.log('[DXLINK] Starting streamer cycle...');
+            const streamer = new TastyStreamer();
+            await streamer.start();  // returns when socket closes
+            console.log('[DXLINK] Streamer cycle ended normally.');
+        } catch (err) {
+            console.error('[DXLINK] Streamer error, will reconnect:', err);
+        }
+
+        const runtimeMs = Date.now() - startTs;
+
+        // If it successfully ran for at least 5 minutes, reset backoff (avoid huge delay after long stable runs)
+        if (runtimeMs > 5 * 60_000) {
+            backoffMs = 1_000;
+        }
+
+        console.log(`[DXLINK] Sleeping for ${backoffMs}ms before reconnect...`);
+        await new Promise((r) => setTimeout(r, backoffMs));
+
+        // Exponential backoff with cap
+        backoffMs = Math.min(backoffMs * 2, maxBackoffMs);
     }
 }
