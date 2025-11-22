@@ -5,8 +5,9 @@ set -euo pipefail
 PROJECT_DIR="/home/richkingsasu/algobot-tastytrade"
 GIT_BRANCH="$(git -C "$PROJECT_DIR" rev-parse --abbrev-ref HEAD)"
 GITHUB_REMOTE="origin"
-GCLOUD_PROJECT_ID="${GCLOUD_PROJECT_ID:-}"
-GIT_PULL_OK_MSG="Already up to date."
+EXPECTED_GCLOUD_PROJECT="algobot-tastytrade"     # Project ID
+EXPECTED_GCLOUD_PROJECT_NUMBER="429420333404"    # Project Number (for logging)
+export GCLOUD_PROJECT_ID="${GCLOUD_PROJECT_ID:-$EXPECTED_GCLOUD_PROJECT}"
 
 echo "=== DAILY SYNC CHECK START ==="
 echo "Project dir: $PROJECT_DIR"
@@ -57,21 +58,19 @@ else
   exit 1
 fi
 
-echo "Current gcloud project:"
 CURRENT_GCLOUD=$(gcloud config get-value project)
-echo "  $CURRENT_GCLOUD"
+echo "Current gcloud project: $CURRENT_GCLOUD"
 
-if [ -z "$GCLOUD_PROJECT_ID" ]; then
-  echo "WARNING: GCLOUD_PROJECT_ID env var not set. Please check if $CURRENT_GCLOUD is the correct project."
-else
-  if [ "$CURRENT_GCLOUD" != "$GCLOUD_PROJECT_ID" ]; then
-    echo "ERROR: gcloud project mismatch. Exiting."
-    exit 1
-  else
-    echo "Project matches expected ID."
-  fi
+if [ "$CURRENT_GCLOUD" != "$EXPECTED_GCLOUD_PROJECT" ]; then
+  echo "WARNING: Current project ($CURRENT_GCLOUD) != expected ($EXPECTED_GCLOUD_PROJECT)"
+  echo "Switching to expected project..."
+  gcloud config set project "$EXPECTED_GCLOUD_PROJECT"
+  CURRENT_GCLOUD=$(gcloud config get-value project)
+  echo "Now current project: $CURRENT_GCLOUD"
 fi
 
+echo "Using Google Cloud Project ID: $CURRENT_GCLOUD (Number: $EXPECTED_GCLOUD_PROJECT_NUMBER)"
+
 # Step 3 – Final confirmation
-echo "All checks passed — you're synced and ready to work."
+echo "All checks passed — you’re synced and ready to work."
 echo "=== DAILY SYNC CHECK COMPLETE ==="
