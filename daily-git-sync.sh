@@ -3,41 +3,36 @@ set -euo pipefail
 
 PROJECT_DIR="/home/richkingsasu/algobot-tastytrade"
 REMOTE="origin"
-BRANCH="$(git -C "${PROJECT_DIR}" rev-parse --abbrev-ref HEAD)"
-
-echo "=== DAILY GIT SYNC START ==="
 cd "${PROJECT_DIR}"
 
-echo "Current branch: ${BRANCH}"
-echo "Fetching from remote..."
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+echo "🔧 Syncing branch: ${BRANCH}"
+
+echo "Fetching remote ${REMOTE}..."
 git fetch "${REMOTE}"
 
-echo "Checking local ahead of remote..."
-LOCAL_AHEAD=$(git rev-list --count ${REMOTE}/${BRANCH}..HEAD)
-if [ "${LOCAL_AHEAD}" -gt 0 ]; then
-  echo "You have ${LOCAL_AHEAD} un-pushed commits."
-  echo "Please push or stash your changes before syncing."
+AHEAD=$(git rev-list --count HEAD..${REMOTE}/${BRANCH})
+BEHIND=$(git rev-list --count ${REMOTE}/${BRANCH}..HEAD)
+
+echo "Result — ahead by ${BEHIND}, behind by ${AHEAD}"
+
+if [[ "${BEHIND}" -gt 0 ]]; then
+  echo "⚠️  You have ${BEHIND} local commits not pushed to remote."
+  echo "Please push your local commits before continuing."
   exit 1
 fi
 
-echo "Checking local behind remote..."
-LOCAL_BEHIND=$(git rev-list --count HEAD..${REMOTE}/${BRANCH})
-if [ "${LOCAL_BEHIND}" -gt 0 ]; then
-  echo "You are behind remote by ${LOCAL_BEHIND} commits."
-  echo "Pulling latest changes..."
+if [[ "${AHEAD}" -gt 0 ]]; then
+  echo "⬇️  Local branch is behind remote by ${AHEAD} commits. Attempting fast‐forward pull..."
   git pull --ff-only "${REMOTE}" "${BRANCH}"
-else
-  echo "No behind commits; local is up to date with remote."
+  echo "✅ Successfully pulled latest changes."
 fi
 
-echo "Checking for uncommitted changes..."
-if [ -n "$(git status --porcelain)" ]; then
-  echo "You have uncommitted changes:"
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "⚠️  There are uncommitted changes in the working tree:"
   git status --porcelain
-  echo "Please commit or stash them before starting work."
+  echo "Please commit or stash them before continuing."
   exit 1
-else
-  echo "Working tree is clean."
 fi
 
-echo "=== DAILY GIT SYNC COMPLETE ==="
+echo "🚀 Local repository is fully synced with remote."
