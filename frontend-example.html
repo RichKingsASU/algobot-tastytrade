@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tastytrade Frontend Example</title>
+  <style>
+        body { font-family: sans-serif; margin: 20px; }
+        pre { background-color: #eee; padding: 10px; border-radius: 5px; }
+        button { padding: 10px 15px; margin-top: 10px; cursor: pointer; }
+        .output { margin-top: 20px; border-top: 1px solid #ccc; padding-top: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Tastytrade Frontend Example</h1>
+
+    <p>This example demonstrates fetching account balances using the Supabase Edge Functions proxy.</p>
+    <p>The session token will be stored in localStorage.</p>
+
+    <button id="fetchBalancesBtn">Fetch Account Balances</button>
+
+    <div class="output">
+        <h2>Output:</h2>
+        <pre id="output"></pre>
+    </div>
+
+    <script type="module">
+        import { TastytradeClient } from './TastytradeClient.js'; // Adjust path as needed
+
+        // --- Configuration ---
+        // Replace with your actual Supabase project URL and Anon Key
+        const SUPABASE_URL = "https://dyrwkxdwszvqpzvodgxl.supabase.co"; // Your Supabase Project URL
+        const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY"; // Your Supabase Project Anon Key
+        const ACCOUNT_NUMBER = "YOUR_TASTYTRADE_ACCOUNT_NUMBER"; // Your Tastytrade Account Number
+
+        // Initialize the client
+        const client = new TastytradeClient({
+            supabaseUrl: SUPABASE_URL,
+            supabaseAnonKey: SUPABASE_ANON_KEY,
+            enableLocalStorage: true, // Enable localStorage for token persistence
+        });
+
+        const outputDiv = document.getElementById('output');
+
+        async function fetchBalances() {
+            outputDiv.textContent = 'Fetching balances...';
+            try {
+                // Ensure logged in (will refresh token if needed)
+                await client.ensureLoggedIn();
+                outputDiv.textContent += '\nSuccessfully logged in/refreshed token.';
+
+                // Fetch account balances
+                const balances = await client.getAccountBalances(ACCOUNT_NUMBER);
+                outputDiv.textContent += '\nAccount Balances:';
+                outputDiv.textContent += '\n' + JSON.stringify(balances, null, 2);
+            } catch (error) {
+                outputDiv.textContent += '\nError: ' + error.message;
+                console.error(error);
+            }
+        }
+
+        document.getElementById('fetchBalancesBtn').addEventListener('click', fetchBalances);
+
+        // Initial check for token status
+        if (client.tokenManager.isValid()) {
+            outputDiv.textContent = 'Existing valid token found in localStorage. Click "Fetch Account Balances" to use it.';
+        } else {
+            outputDiv.textContent = 'No valid token found. Click "Fetch Account Balances" to log in.';
+        }
+    </script>
+</body>
+</html>

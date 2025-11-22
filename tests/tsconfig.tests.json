@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "outDir": "../dist-tests"
+  },
+  "include": [
+    "../TastytradeTokenManager.ts",
+    "../TastytradeClient.ts",
+    "./*.ts"
+  ]
+}
