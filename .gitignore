@@ -1,4 +1,14 @@
 node_modules/
-.env
+/.env
 dist/
 build/
+deno.lock
+
+# Python
+__pycache__/
+*.pyc
+
+# Streaming service
+streaming-service/.env
+streaming-service/streamer.log
+.local
